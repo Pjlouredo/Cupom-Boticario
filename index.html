@@ -1,0 +1,344 @@
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cupom Boticário</title>
+  <link rel="shortcut icon" href="img/favicon.ico" type="image/x-icon">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    h1,
+    h2 {
+      color: #333;
+      text-align: center;
+    }
+
+    #searchForm,
+    #registerForm {
+      display: flex;
+      margin-bottom: 20px;
+    }
+
+    input[type="text"],
+    textarea {
+      flex-grow: 1;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+
+    #searchInput {
+      border-radius: 4px 0 0 4px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    #searchButton {
+      border-radius: 0 4px 4px 0;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    #results {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    #results li {
+      background-color: #f9f9f9;
+      margin-bottom: 10px;
+      padding: 15px;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .noResults {
+      text-align: center;
+      color: #666;
+      font-style: italic;
+    }
+
+    #registerForm {
+      flex-direction: column;
+    }
+
+    #registerForm button {
+      align-self: flex-end;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    #registerOption {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    #registerOption button {
+      background-color: #008CBA;
+    }
+
+    #registerOption button:hover {
+      background-color: #007B9A;
+    }
+
+    #suggestions {
+      position: absolute;
+      background-color: white;
+      border: 1px solid #ddd;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+      max-height: 150px;
+      overflow-y: auto;
+      width: calc(100% - 40px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    #suggestions div {
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    #suggestions div:hover {
+      background-color: #f0f0f0;
+    }
+
+    .logo {
+      display: block;
+      margin: 0 auto 20px;
+      max-width: 200px;
+      height: auto;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <img src="img/01.jpg" alt="Barbearia Louredo logo" class="logo">
+    <h1>Cupom Boticário</h1>
+
+    <div id="searchSection">
+      <form id="searchForm">
+        <input type="text" id="searchInput" placeholder="Digite o código do cupom..." autocomplete="off">
+        <button type="submit" id="searchButton">Buscar</button>
+      </form>
+      <div id="suggestions" class="hidden"></div>
+      <ul id="results"></ul>
+      <div id="registerOption" class="hidden">
+        <p>Cupom não encontrado. Deseja cadastrá-lo?</p>
+        <button id="showRegisterForm">Cadastrar Novo Cupom</button>
+      </div>
+    </div>
+
+    <div id="registerSection" class="hidden">
+      <h2>Cadastrar Novo Cupom</h2>
+      <form id="registerForm">
+        <input type="text" id="codeInput" placeholder="Código do Cupom" required>
+        <textarea id="descriptionInput" placeholder="Descrição do Cupom" required></textarea>
+        <button type="submit">Cadastrar</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+  <script>
+    // Inicialização do banco de dados IndexedDB usando Dexie.js
+    const db = new Dexie('CouponsDatabase');
+    db.version(1).stores({
+      coupons: '++id, code, description'
+    });
+
+    // Função para buscar cupons
+    async function searchCoupons(searchTerm) {
+      return await db.coupons
+        .where('code')
+        .equals(searchTerm)
+        .toArray();
+    }
+
+    // Função para adicionar ou atualizar um cupom
+    async function addOrUpdateCoupon(code, description) {
+      try {
+        const existingCoupon = await db.coupons.where('code').equals(code).first();
+        if (existingCoupon) {
+          await db.coupons.update(existingCoupon.id, { description: description });
+          return { id: existingCoupon.id, code, description };
+        } else {
+          const id = await db.coupons.add({
+            code: code,
+            description: description
+          });
+          return { id, code, description };
+        }
+      } catch (error) {
+        console.error("Error adding/updating coupon:", error);
+        throw error;
+      }
+    }
+
+    // Event listener para o formulário de busca
+    document.getElementById('searchForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const searchTerm = document.getElementById('searchInput').value.replace(/\s/g, '').toUpperCase();
+      document.getElementById('searchInput').value = searchTerm;
+      const results = await searchCoupons(searchTerm);
+
+      if (results.length > 0) {
+        displayResults(results);
+        document.getElementById('registerOption').classList.add('hidden');
+      } else {
+        displayNoResults();
+        document.getElementById('registerOption').classList.remove('hidden');
+      }
+    });
+
+    // Event listener para mostrar o formulário de registro
+    document.getElementById('showRegisterForm').addEventListener('click', function () {
+      document.getElementById('searchSection').classList.add('hidden');
+      document.getElementById('registerSection').classList.remove('hidden');
+      document.getElementById('codeInput').value = document.getElementById('searchInput').value;
+    });
+
+    // Event listener para o formulário de registro
+    document.getElementById('registerForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const code = document.getElementById('codeInput').value.replace(/\s/g, '').toUpperCase();
+      const description = document.getElementById('descriptionInput').value;
+
+      try {
+        const newCoupon = await addOrUpdateCoupon(code, description);
+        alert('Cupom cadastrado/atualizado com sucesso!');
+        document.getElementById('registerForm').reset();
+        document.getElementById('searchSection').classList.remove('hidden');
+        document.getElementById('registerSection').classList.add('hidden');
+        document.getElementById('registerOption').classList.add('hidden');
+        displayResults([newCoupon]);
+      } catch (error) {
+        alert('Erro ao cadastrar/atualizar o cupom. Por favor, tente novamente.');
+      }
+    });
+
+    function displayResults(results) {
+      const resultsContainer = document.getElementById('results');
+      resultsContainer.innerHTML = '';
+
+      results.forEach(item => {
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${item.code}</strong><br>Cupom já Utilizado`;
+        resultsContainer.appendChild(li);
+      });
+    }
+
+    function displayNoResults() {
+      const resultsContainer = document.getElementById('results');
+      resultsContainer.innerHTML = '<li class="noResults">Nenhum cupom encontrado.</li>';
+    }
+
+    // Função para sugerir cupons
+    async function suggestCoupons(prefix) {
+      return await db.coupons
+        .where('code')
+        .startsWithIgnoreCase(prefix)
+        .limit(5)
+        .toArray();
+    }
+
+    // Event listener para sugestões
+    document.getElementById('searchInput').addEventListener('input', async function (e) {
+      const prefix = e.target.value.replace(/\s/g, '').toUpperCase();
+      e.target.value = prefix;
+      if (prefix.length > 0) {
+        const suggestions = await suggestCoupons(prefix);
+        displaySuggestions(suggestions);
+      } else {
+        hideSuggestions();
+      }
+    });
+
+    function displaySuggestions(suggestions) {
+      const suggestionsContainer = document.getElementById('suggestions');
+      suggestionsContainer.innerHTML = '';
+
+      if (suggestions.length > 0) {
+        suggestions.forEach(coupon => {
+          const div = document.createElement('div');
+          div.textContent = coupon.code;
+          div.addEventListener('click', () => {
+            document.getElementById('searchInput').value = coupon.code;
+            hideSuggestions();
+          });
+          suggestionsContainer.appendChild(div);
+        });
+        suggestionsContainer.classList.remove('hidden');
+      } else {
+        hideSuggestions();
+      }
+    }
+
+    function hideSuggestions() {
+      document.getElementById('suggestions').classList.add('hidden');
+    }
+
+    // Inicialização: adicionar os novos cupons
+    const newCoupons = [
+      "CRC6AQ49AU", "TB3DW7WAGY", "G2WV9LW3U2", "VYERQEECWR", "NHW3EAUFRT",
+      "ZAC8D8DRA", "P56BFLUXL2", "TY5PXPC4G5", "7L7JUKZFXT", "293BQUMMRL",
+      "QWE3J7EA8Q", "MHLRCJVA2R", "5NTEMD6LVL", "R27EPTYYDG", "EKZQ6TWDRQ",
+      "8TNFGYTTUE", "RTUCEVNAL6", "LNYAJR364L", "XB46WS8FSE", "GZYNV3NEN6"
+    ];
+
+    async function initializeCoupons() {
+      for (const code of newCoupons) {
+        await addOrUpdateCoupon(code, `Cupom já Utilizado`);
+      }
+      console.log("Novos cupons adicionados ou atualizados no banco de dados.");
+    }
+
+    initializeCoupons();
+
+    // Forçar letras maiúsculas nos campos de entrada
+    document.getElementById('searchInput').addEventListener('input', function (e) {
+      e.target.value = e.target.value.toUpperCase();
+    });
+
+    document.getElementById('codeInput').addEventListener('input', function (e) {
+      e.target.value = e.target.value.toUpperCase();
+    });
+  </script>
+</body>
+
+</html>
